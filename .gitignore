@@ -10,3 +10,7 @@
 /Godeps/_workspace
 vendor
 vendor.*
+
+.idea/
+.vscode/
+.cursor/
