@@ -18,7 +18,7 @@ package driver
 
 import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/golang/glog"
+	"k8s.io/klog"
 
 	csicommon "github.com/kubernetes-csi/drivers/pkg/csi-common"
 )
@@ -41,7 +41,7 @@ var (
 func New(nodeID string, endpoint string) (*driver, error) {
 	d := csicommon.NewCSIDriver(driverName, vendorVersion, nodeID)
 	if d == nil {
-		glog.Fatalln("Failed to initialize CSI Driver.")
+		klog.Fatalln("Failed to initialize CSI Driver.")
 	}
 
 	s3Driver := &driver{
@@ -70,8 +70,8 @@ func (s3 *driver) newNodeServer(d *csicommon.CSIDriver) *nodeServer {
 }
 
 func (s3 *driver) Run() {
-	glog.Infof("Driver: %v ", driverName)
-	glog.Infof("Version: %v ", vendorVersion)
+	klog.Infof("Driver: %v ", driverName)
+	klog.Infof("Version: %v ", vendorVersion)
 	// Initialize default library driver
 
 	s3.driver.AddControllerServiceCapabilities([]csi.ControllerServiceCapability_RPC_Type{csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME})

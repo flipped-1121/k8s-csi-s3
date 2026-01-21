@@ -8,7 +8,7 @@ import (
 
 	systemd "github.com/coreos/go-systemd/v22/dbus"
 	dbus "github.com/godbus/dbus/v5"
-	"github.com/golang/glog"
+	"k8s.io/klog"
 
 	"github.com/yandex-cloud/k8s-csi-s3/pkg/s3"
 )
@@ -141,7 +141,7 @@ func (geesefs *geesefsMounter) Mount(target, volumeID string) error {
 	}
 	conn, err := systemd.New()
 	if err != nil {
-		glog.Errorf("Failed to connect to systemd dbus service: %v, starting geesefs directly", err)
+		klog.Errorf("Failed to connect to systemd dbus service: %v, starting geesefs directly", err)
 		return geesefs.MountDirect(target, args)
 	}
 	defer conn.Close()
@@ -156,6 +156,7 @@ func (geesefs *geesefsMounter) Mount(target, volumeID string) error {
 	args = append([]string{pluginDir+"/geesefs", "-f", "-o", "allow_other", "--endpoint", geesefs.endpoint}, args...)
 	glog.Info("Starting geesefs using systemd: "+strings.Join(args, " "))
 	unitName := "geesefs-"+systemd.PathBusEscape(volumeID)+".service"
+	klog.Info("Starting geesefs using systemd: " + strings.Join(args, " "))
 	newProps := []systemd.Property{
 		systemd.Property{
 			Name: "Description",

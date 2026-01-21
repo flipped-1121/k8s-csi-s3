@@ -25,8 +25,8 @@ import (
 
 	"github.com/yandex-cloud/k8s-csi-s3/pkg/mounter"
 	"github.com/yandex-cloud/k8s-csi-s3/pkg/s3"
-	"github.com/golang/glog"
 	"golang.org/x/net/context"
+	"k8s.io/klog"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
@@ -50,7 +50,7 @@ func getMeta(bucketName, prefix string, context map[string]string) *s3.FSMeta {
 		for _, opt := range re.FindAll([]byte(mountOptStr), -1) {
 			// Unquote options
 			opt = re2.ReplaceAllFunc(opt, func(q []byte) []byte {
-				return re3.ReplaceAll(q[1 : len(q)-1], []byte("$1"))
+				return re3.ReplaceAll(q[1:len(q)-1], []byte("$1"))
 			})
 			mountOptions = append(mountOptions, string(opt))
 		}
@@ -118,18 +118,18 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	mountFlags := req.GetVolumeCapability().GetMount().GetMountFlags()
 	attrib := req.GetVolumeContext()
 
-	glog.V(4).Infof("target %v\nreadonly %v\nvolumeId %v\nattributes %v\nmountflags %v\n",
+	klog.V(4).Infof("target %v\nreadonly %v\nvolumeId %v\nattributes %v\nmountflags %v\n",
 		targetPath, readOnly, volumeID, attrib, mountFlags)
 
 	cmd := exec.Command("mount", "--bind", stagingTargetPath, targetPath)
 	cmd.Stderr = os.Stderr
-	glog.V(3).Infof("Binding volume %v from %v to %v", volumeID, stagingTargetPath, targetPath)
+	klog.V(3).Infof("Binding volume %v from %v to %v", volumeID, stagingTargetPath, targetPath)
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("Error running mount --bind %v %v: %s", stagingTargetPath, targetPath, out)
 	}
 
-	glog.V(4).Infof("s3: volume %s successfully mounted to %s", volumeID, targetPath)
+	klog.V(4).Infof("s3: volume %s successfully mounted to %s", volumeID, targetPath)
 
 	return &csi.NodePublishVolumeResponse{}, nil
 }
@@ -149,7 +149,7 @@ func (ns *nodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 	if err := mounter.Unmount(targetPath); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	glog.V(4).Infof("s3: volume %s has been unmounted.", volumeID)
+	klog.V(4).Infof("s3: volume %s has been unmounted.", volumeID)
 
 	return &csi.NodeUnpublishVolumeResponse{}, nil
 }
@@ -222,7 +222,7 @@ func (ns *nodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	if !exists {
 		err = mounter.FuseUnmount(stagingTargetPath)
 	}
-	glog.V(4).Infof("s3: volume %s has been unmounted from stage path %v.", volumeID, stagingTargetPath)
+	klog.V(4).Infof("s3: volume %s has been unmounted from stage path %v.", volumeID, stagingTargetPath)
 
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }

@@ -18,15 +18,11 @@ package main
 
 import (
 	"flag"
-	"log"
 	"os"
 
 	"github.com/yandex-cloud/k8s-csi-s3/pkg/driver"
+	"k8s.io/klog"
 )
-
-func init() {
-	flag.Set("logtostderr", "true")
-}
 
 var (
 	endpoint = flag.String("endpoint", "unix://tmp/csi.sock", "CSI endpoint")
@@ -38,7 +34,7 @@ func main() {
 
 	driver, err := driver.New(*nodeID, *endpoint)
 	if err != nil {
-		log.Fatal(err)
+		klog.Fatalf("Failed to create driver: %v", err)
 	}
 	driver.Run()
 	os.Exit(0)

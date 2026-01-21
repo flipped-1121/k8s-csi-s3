@@ -26,10 +26,10 @@ import (
 
 	"github.com/yandex-cloud/k8s-csi-s3/pkg/mounter"
 	"github.com/yandex-cloud/k8s-csi-s3/pkg/s3"
-	"github.com/golang/glog"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"k8s.io/klog"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	csicommon "github.com/kubernetes-csi/drivers/pkg/csi-common"
@@ -54,7 +54,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	}
 
 	if err := cs.Driver.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
-		glog.V(3).Infof("invalid create volume req: %v", req)
+		klog.V(3).Infof("invalid create volume req: %v", req)
 		return nil, err
 	}
 
@@ -66,29 +66,34 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		return nil, status.Error(codes.InvalidArgument, "Volume Capabilities missing in request")
 	}
 
-	glog.V(4).Infof("Got a request to create volume %s", volumeID)
+	klog.V(4).Infof("Got a request to create volume %s", volumeID)
 
 	client, err := s3.NewClientFromSecret(req.GetSecrets())
+	klog.V(4).Infof("initialized S3 client config: %v", client.Config)
 	if err != nil {
+		klog.V(3).Infof("failed to initialize S3 client: %v", err)
 		return nil, fmt.Errorf("failed to initialize S3 client: %s", err)
 	}
 
 	exists, err := client.BucketExists(bucketName)
 	if err != nil {
+		klog.V(3).Infof("failed to check if bucket %s exists: %v", volumeID, err)
 		return nil, fmt.Errorf("failed to check if bucket %s exists: %v", volumeID, err)
 	}
 
 	if !exists {
 		if err = client.CreateBucket(bucketName); err != nil {
+			klog.V(3).Infof("failed to create bucket %s: %v", bucketName, err)
 			return nil, fmt.Errorf("failed to create bucket %s: %v", bucketName, err)
 		}
 	}
 
 	if err = client.CreatePrefix(bucketName, prefix); err != nil {
-		return nil, fmt.Errorf("failed to create prefix %s: %v", prefix, err)
+		klog.V(3).Infof("failed to create prefix %s: %v", prefix, err)
+		return nil, fmt.Errorf("failed to create prefix %s: %v, client config: %v", prefix, err, client.Config)
 	}
 
-	glog.V(4).Infof("create volume %s", volumeID)
+	klog.V(4).Infof("create volume %s", volumeID)
 	// DeleteVolume lacks VolumeContext, but publish&unpublish requests have it,
 	// so we don't need to store additional metadata anywhere
 	context := make(map[string]string)
@@ -115,10 +120,10 @@ func (cs *controllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	}
 
 	if err := cs.Driver.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
-		glog.V(3).Infof("Invalid delete volume req: %v", req)
+		klog.V(3).Infof("Invalid delete volume req: %v", req)
 		return nil, err
 	}
-	glog.V(4).Infof("Deleting volume %s", volumeID)
+	klog.V(4).Infof("Deleting volume %s", volumeID)
 
 	client, err := s3.NewClientFromSecret(req.GetSecrets())
 	if err != nil {
@@ -131,12 +136,12 @@ func (cs *controllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 		if err := client.RemoveBucket(bucketName); err != nil && err.Error() != "The specified bucket does not exist" {
 			deleteErr = err
 		}
-		glog.V(4).Infof("Bucket %s removed", bucketName)
+		klog.V(4).Infof("Bucket %s removed", bucketName)
 	} else {
 		if err := client.RemovePrefix(bucketName, prefix); err != nil {
 			deleteErr = fmt.Errorf("unable to remove prefix: %w", err)
 		}
-		glog.V(4).Infof("Prefix %s removed", prefix)
+		klog.V(4).Infof("Prefix %s removed", prefix)
 	}
 
 	if deleteErr != nil {
