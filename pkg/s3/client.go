@@ -33,6 +33,7 @@ type Config struct {
 	Endpoint        string
 	Mounter         string
 	Insecure        bool
+	SignatureType   string
 }
 
 type FSMeta struct {
@@ -63,9 +64,30 @@ func NewClient(cfg *Config) (*s3Client, error) {
 		tlsConfig.InsecureSkipVerify = true
 		transport.TLSClientConfig = tlsConfig
 	}
+
+	// Determine signature type
+	var creds *credentials.Credentials
+	signatureType := client.Config.SignatureType
+	if signatureType == "" {
+		signatureType = "V4"
+	}
+
+	switch signatureType {
+	case "V2":
+		creds = credentials.NewStatic(client.Config.AccessKeyID, client.Config.SecretAccessKey, "", credentials.SignatureV2)
+	case "V4":
+		creds = credentials.NewStatic(client.Config.AccessKeyID, client.Config.SecretAccessKey, "", credentials.SignatureV4)
+	case "V4Streaming":
+		creds = credentials.NewStatic(client.Config.AccessKeyID, client.Config.SecretAccessKey, "", credentials.SignatureV4Streaming)
+	case "Anonymous":
+		creds = credentials.NewStatic(client.Config.AccessKeyID, client.Config.SecretAccessKey, "", credentials.SignatureAnonymous)
+	default:
+		return nil, fmt.Errorf("invalid signature type: %s (supported: V2, V4, V4Streaming, Anonymous)", signatureType)
+	}
+
 	minioClient, err := minio.New(endpoint, &minio.Options{
 		Transport: transport,
-		Creds:     credentials.NewStaticV4(client.Config.AccessKeyID, client.Config.SecretAccessKey, ""),
+		Creds:     creds,
 		Region:    client.Config.Region,
 		Secure:    ssl,
 	})
@@ -74,6 +96,8 @@ func NewClient(cfg *Config) (*s3Client, error) {
 	}
 	client.minio = minioClient
 	client.ctx = context.Background()
+	klog.Infof("S3 client initialized - Endpoint: %s, Region: %s, SignatureType: %s, Insecure: %v",
+		client.Config.Endpoint, client.Config.Region, client.Config.SignatureType, client.Config.Insecure)
 	return client, nil
 }
 
@@ -85,25 +109,43 @@ func NewClientFromSecret(secret map[string]string) (*s3Client, error) {
 		Region:          secret["region"],
 		Endpoint:        secret["endpoint"],
 		// Mounter is set in the volume preferences, not secrets
-		Mounter:  "",
-		Insecure: insecure,
+		Mounter:       "",
+		Insecure:      insecure,
+		SignatureType: secret["signatureType"],
 	})
 }
 
 func (client *s3Client) BucketExists(bucketName string) (bool, error) {
-	return client.minio.BucketExists(client.ctx, bucketName)
+	klog.V(4).Infof("Checking if bucket exists: %s", bucketName)
+	exists, err := client.minio.BucketExists(client.ctx, bucketName)
+	if err != nil {
+		klog.Errorf("Error checking bucket existence for %s: %v", bucketName, err)
+	} else {
+		klog.V(4).Infof("Bucket %s exists: %v", bucketName, exists)
+	}
+	return exists, err
 }
 
 func (client *s3Client) CreateBucket(bucketName string) error {
-	return client.minio.MakeBucket(client.ctx, bucketName, minio.MakeBucketOptions{Region: client.Config.Region})
+	klog.Infof("Creating bucket: %s with region: %s", bucketName, client.Config.Region)
+	err := client.minio.MakeBucket(client.ctx, bucketName, minio.MakeBucketOptions{Region: client.Config.Region})
+	if err != nil {
+		klog.Errorf("Failed to create bucket %s: %v", bucketName, err)
+	} else {
+		klog.Infof("Successfully created bucket: %s", bucketName)
+	}
+	return err
 }
 
 func (client *s3Client) CreatePrefix(bucketName string, prefix string) error {
 	if prefix != "" {
+		klog.V(4).Infof("Creating prefix: %s in bucket: %s, client config: %v", prefix, bucketName, client.Config)
 		_, err := client.minio.PutObject(client.ctx, bucketName, prefix+"/", bytes.NewReader([]byte("")), 0, minio.PutObjectOptions{})
 		if err != nil {
+			klog.Errorf("Failed to create prefix %s in bucket %s: %v", prefix, bucketName, err)
 			return err
 		}
+		klog.V(4).Infof("Successfully created prefix: %s", prefix)
 	}
 	return nil
 }
